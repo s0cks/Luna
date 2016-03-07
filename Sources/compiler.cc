@@ -1,4 +1,6 @@
 #include "compiler.h"
+#include "assembler.h"
+#include "intermediate_language.h"
 
 namespace Luna{
     void Compiler::Compile(Function* func){

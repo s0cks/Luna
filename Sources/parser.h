@@ -33,7 +33,11 @@ namespace Luna{
 #define TOKENS_SYMBOLS_LIST(V) \
     V(kEQUALS, "=", "<equals>") \
     V(kLPAREN, "(", "<left parenthesis>") \
-    V(kRPAREN, ")", "<right parenthesis>")
+    V(kRPAREN, ")", "<right parenthesis>") \
+    V(kLBRACKET, "[", "<left bracket>") \
+    V(kRBRACKET, "]", "<right bracket>") \
+    V(kLBRACE, "{", "<left brace>") \
+    V(kRBRACE, "}", "<right brace>")
 
 #define TOKENS_LITERALS_LIST(V) \
     V(kLIT_STRING, "", "<literal string>") \

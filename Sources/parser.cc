@@ -1,4 +1,5 @@
 #include "parser.h"
+#include "intermediate_language.h"
 
 namespace Luna{
     std::map<std::string, TokenKind> Parser::keywords_ = std::map<std::string, TokenKind>();
@@ -57,11 +58,18 @@ namespace Luna{
 
     bool Parser::IsSymbol(char c){
         return c == '(' ||
-               c == ')';
+               c == ')' ||
+               c == '[' ||
+               c == ']' ||
+               c == '=';
     }
 
     bool Parser::IsKeyword(std::string str) {
         return keywords_.find(str) != keywords_.end();
+    }
+
+    void Parser::PushBack(Token* token) {
+        peek_ = token;
     }
 
     Token* Parser::NextToken() {
@@ -75,6 +83,9 @@ namespace Luna{
         switch(next){
             case '(': return new Token(TokenKind::kLPAREN, "(");
             case ')': return new Token(TokenKind::kRPAREN, ")");
+            case '[': return new Token(TokenKind::kLBRACKET, "[");
+            case ']': return new Token(TokenKind::kRBRACKET, "]");
+            case '=': return new Token(TokenKind::kEQUALS, "=");
             case '\0': return new Token(TokenKind::kEOF, "");
         }
 
@@ -105,6 +116,22 @@ namespace Luna{
         Token* next;
         while((next = NextToken())->GetKind() != TokenKind::kEOF){
             switch(next->GetKind()){
+                case TokenKind::kLOCAL:{
+                    std::string ident = ((next = NextToken())->GetText());
+                    if((next = NextToken())->GetKind() != TokenKind::kEQUALS){
+                        std::cerr << "Unexpected " << next->GetText() << std::endl;
+                        abort();
+                    }
+
+                    switch((next = NextToken())->GetKind()){
+                        case TokenKind::kLIT_STRING:{
+                            scope->Define(ident, new String(next->GetText()));
+                            break;
+                        }
+                    }
+
+                    break;
+                }
                 case TokenKind::kIDENTIFIER:{
                     std::string ident = next->GetText();
                     if((next = NextToken())->GetKind() == TokenKind::kLPAREN){
@@ -118,8 +145,33 @@ namespace Luna{
                                     func->instructions_.push_back(new PushArgumentInstr(new Number(atof(next->GetText().c_str()))));
                                     break;
                                 }
+                                case TokenKind::kIDENTIFIER:{
+                                    std::string ident2 = next->GetText();
+                                    if((next = NextToken())->GetKind() == TokenKind::kLBRACKET){
+                                        Object* obj = scope->Lookup(ident2);
+                                        if(obj == nullptr || obj->Type() != kTableTID){
+                                            std::cerr << ident2 << " not a table" << std::endl;
+                                            abort();
+                                        }
+                                        Table* tbl = static_cast<Table*>(obj);
+                                        if((next = NextToken())->GetKind() != TokenKind::kLIT_NUMBER){
+                                            std::cerr << next->GetText() << "[" << next->GetKind() << "] not an indexable object" << std::endl;
+                                            abort();
+                                        }
+
+                                        func->instructions_.push_back(new LoadObjectInstr(RAX, tbl));
+                                        func->instructions_.push_back(new GetTableEntryInstr(RAX, atoi(next->GetText().c_str()), RCX));
+                                        func->instructions_.push_back(new PushArgumentInstr(RCX));
+                                    } else{
+                                        PushBack(next);
+                                        func->instructions_.push_back(new LoadObjectInstr(RAX, scope->Lookup(ident2)));
+                                        func->instructions_.push_back(new PushArgumentInstr(RAX));
+                                    }
+
+                                    break;
+                                }
                                 default:{
-                                    std::cerr << "Unexpected " << next->GetText() << std::endl;
+                                    std::cerr << "Unexpected " << next->GetText() << "[lookahead: " << (next = NextToken())->GetText() << "]" << std::endl;
                                     abort();
                                 }
                             }
@@ -141,7 +193,7 @@ namespace Luna{
                     break;
                 }
                 default:{
-                    std::cerr << "Unexpected: " << next->GetText() << std::endl;
+                    std::cerr << "Unexpected: " << next->GetText() << "[" << next->GetKind() << "]" << std::endl;
                     abort();
                 }
             }

@@ -6,7 +6,6 @@
 #include <iostream>
 #include <vector>
 #include "global.h"
-#include "intermediate_language.h"
 
 #define TYPES_LIST(V) \
     V(String) \
@@ -17,6 +16,8 @@
     V(Table)
 
 namespace Luna{
+    class Instruction;
+
 #define VALUE_OFFSET(V) \
     static word ValueOffset(){ \
         return offsetof(V, value_); \
@@ -78,7 +79,7 @@ namespace Luna{
         double value_;
     };
 
-    typedef void (*CFunction)(Object*);
+    typedef void* CFunction;
 
     class Function : public Object{
     public:
@@ -156,7 +157,7 @@ namespace Luna{
             Object(kTableTID){}
 
         Object** ObjectAddrAtOffset(word offset) const{
-            return reinterpret_cast<Object**>(reinterpret_cast<word>(this) + offset);
+            return reinterpret_cast<Object**>(reinterpret_cast<word>(this) + sizeof(Table) + offset);
         }
     };
 }

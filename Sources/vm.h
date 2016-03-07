@@ -41,7 +41,7 @@ namespace Luna{
         }
 
 #define NATIVE_FUNCTION(NAME, F) \
-        scope->Define((NAME), Function::Native((NAME), F));
+        scope->Define((NAME), Function::Native((NAME), (void*) F));
 
         static void InitOnce(Scope* scope){
             NATIVE_FUNCTION("print", &CPrint);
