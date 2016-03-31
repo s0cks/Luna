@@ -72,6 +72,15 @@ namespace Luna{
         Function* function_;
     };
 
+    class CompoundCallInstr : public Instruction{
+    public:
+        CompoundCallInstr(Function* f):
+                function_(f){}
+        DECL_INSTR;
+    private:
+        Function* function_;
+    };
+
     class ReturnInstr: public Instruction{
     public:
         DECL_INSTR;
@@ -97,6 +106,28 @@ namespace Luna{
     private:
         Register register_;
         Object* object_;
+    };
+
+    class StoreLocalInstr: public Instruction{
+    public:
+        StoreLocalInstr(LocalVariable* local):
+                local_(local){}
+
+        DECL_INSTR;
+    private:
+        LocalVariable* local_;
+    };
+
+    class LoadLocalInstr: public Instruction{
+    public:
+        LoadLocalInstr(Register reg, LocalVariable* local):
+                register_(reg),
+                local_(local){}
+
+        DECL_INSTR;
+    private:
+        Register register_;
+        LocalVariable* local_;
     };
 }
 

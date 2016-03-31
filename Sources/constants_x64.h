@@ -64,6 +64,7 @@ namespace Luna{
         REX_PREFIX = 1 << 6
     };
 
+    const Register PP = R15;
     const Register TMP = R11;
 
     enum ScaleFactor{

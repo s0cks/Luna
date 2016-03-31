@@ -1,5 +1,7 @@
 #include "parser.h"
 #include "intermediate_language.h"
+#include "compiler.h"
+#include "ast.h"
 
 namespace Luna{
     std::map<std::string, TokenKind> Parser::keywords_ = std::map<std::string, TokenKind>();
@@ -61,7 +63,10 @@ namespace Luna{
                c == ')' ||
                c == '[' ||
                c == ']' ||
-               c == '=';
+               c == '{' ||
+               c == '}' ||
+               c == '=' ||
+               c == ',';
     }
 
     bool Parser::IsKeyword(std::string str) {
@@ -69,6 +74,7 @@ namespace Luna{
     }
 
     void Parser::PushBack(Token* token) {
+        std::cout << "Returning " << token->GetText() << std::endl;
         peek_ = token;
     }
 
@@ -85,7 +91,10 @@ namespace Luna{
             case ')': return new Token(TokenKind::kRPAREN, ")");
             case '[': return new Token(TokenKind::kLBRACKET, "[");
             case ']': return new Token(TokenKind::kRBRACKET, "]");
+            case '{': return new Token(TokenKind::kLBRACE, "{");
+            case '}': return new Token(TokenKind::kRBRACE, "}");
             case '=': return new Token(TokenKind::kEQUALS, "=");
+            case ',': return new Token(TokenKind::kCOMMA, ",");
             case '\0': return new Token(TokenKind::kEOF, "");
         }
 
@@ -111,95 +120,154 @@ namespace Luna{
         }
     }
 
+#define KIND TokenKind
+#define CONSUME next = NextToken()
+
     Function* Parser::Parse(Scope* scope) {
-        Function* func = new Function("___main___");
+        Function* func = new Function("__main__", scope);
+
         Token* next;
-        while((next = NextToken())->GetKind() != TokenKind::kEOF){
+        while((next = NextToken())->GetKind() != KIND::kEOF){
+            std::cout << next->GetText() << std::endl;
             switch(next->GetKind()){
-                case TokenKind::kLOCAL:{
-                    std::string ident = ((next = NextToken())->GetText());
-                    if((next = NextToken())->GetKind() != TokenKind::kEQUALS){
-                        std::cerr << "Unexpected " << next->GetText() << std::endl;
-                        abort();
-                    }
-
-                    switch((next = NextToken())->GetKind()){
-                        case TokenKind::kLIT_STRING:{
-                            scope->Define(ident, new String(next->GetText()));
-                            break;
-                        }
-                    }
-
+                case KIND::kLOCAL:{
+                    AstNode* init = ParseLocalDefinition(scope);
+                    func->ast_.push_back(init);
                     break;
                 }
-                case TokenKind::kIDENTIFIER:{
-                    std::string ident = next->GetText();
-                    if((next = NextToken())->GetKind() == TokenKind::kLPAREN){
-                        while((next = NextToken())->GetKind() != TokenKind::kRPAREN){
-                            switch(next->GetKind()){
-                                case TokenKind::kLIT_STRING:{
-                                    func->instructions_.push_back(new PushArgumentInstr(new String(next->GetText())));
-                                    break;
-                                }
-                                case TokenKind::kLIT_NUMBER:{
-                                    func->instructions_.push_back(new PushArgumentInstr(new Number(atof(next->GetText().c_str()))));
-                                    break;
-                                }
-                                case TokenKind::kIDENTIFIER:{
-                                    std::string ident2 = next->GetText();
-                                    if((next = NextToken())->GetKind() == TokenKind::kLBRACKET){
-                                        Object* obj = scope->Lookup(ident2);
-                                        if(obj == nullptr || obj->Type() != kTableTID){
-                                            std::cerr << ident2 << " not a table" << std::endl;
-                                            abort();
-                                        }
-                                        Table* tbl = static_cast<Table*>(obj);
-                                        if((next = NextToken())->GetKind() != TokenKind::kLIT_NUMBER){
-                                            std::cerr << next->GetText() << "[" << next->GetKind() << "] not an indexable object" << std::endl;
-                                            abort();
-                                        }
-
-                                        func->instructions_.push_back(new LoadObjectInstr(RAX, tbl));
-                                        func->instructions_.push_back(new GetTableEntryInstr(RAX, atoi(next->GetText().c_str()), RCX));
-                                        func->instructions_.push_back(new PushArgumentInstr(RCX));
-                                    } else{
-                                        PushBack(next);
-                                        func->instructions_.push_back(new LoadObjectInstr(RAX, scope->Lookup(ident2)));
-                                        func->instructions_.push_back(new PushArgumentInstr(RAX));
-                                    }
-
-                                    break;
-                                }
-                                default:{
-                                    std::cerr << "Unexpected " << next->GetText() << "[lookahead: " << (next = NextToken())->GetText() << "]" << std::endl;
-                                    abort();
-                                }
-                            }
-                        }
-
-                        Object* potFunc = scope->Lookup(ident);
-                        if(potFunc == nullptr || !potFunc->IsExecutable()){
-                            std::cerr << ident << " not a function!" << std::endl;
-                            abort();
-                        }
-                        Function* f = static_cast<Function*>(potFunc);
-                        if(f->IsNative()){
-                            func->instructions_.push_back(new NativeCallInstr(f));
-                        } else{
-                            //TODO: CompoundCallInstr
-                        }
-                    }
-
+                case KIND::kRETURN:{
+                    std::cout << "Parsing Return" << std::endl;
+                    AstNode* retVal = ParseBinaryExpr(scope);
+                    func->ast_.push_back(new ReturnNode(retVal));
                     break;
                 }
                 default:{
-                    std::cerr << "Unexpected: " << next->GetText() << "[" << next->GetKind() << "]" << std::endl;
+                    std::cerr << "Unexpected " << next->GetText() << std::endl;
                     abort();
                 }
             }
         }
 
-        func->instructions_.push_back(new ReturnInstr);
+        Compiler::Compile(func);
         return func;
+    }
+
+    bool Parser::ResolveIdentifierInLocalScope(Scope* scope, std::string ident, AstNode** node) {
+        LocalVariable* local = scope->LookupVariable(ident);
+        if(local != nullptr){
+            if(node != nullptr){
+                *node = new LoadLocalNode(local);
+            }
+
+            return true;
+        }
+
+        //TODO: Check for top-level-ness
+        if(node != nullptr){
+            *node = nullptr;
+        }
+        return false;
+    }
+
+    AstNode* Parser::ParseUnaryExpr(Scope* scope){
+        AstNode* primary = nullptr;
+        Token* next = NextToken();
+        std::cout << "ParseUnaryExpr: " << next->GetText() << std::endl;
+
+        switch((next)->GetKind()){
+            case KIND::kIDENTIFIER:{
+                std::string ident = next->GetText();
+                CONSUME;
+                if(!ResolveIdentifierInLocalScope(scope, ident, &primary)){
+                    std::cerr << "Couldn't resolve " << ident << std::endl;
+                    abort();
+                }
+                break;
+            }
+            case KIND::kLIT_NUMBER:{
+                primary = new LiteralNode(new Number(atof(next->GetText().c_str())));
+                break;
+            }
+            case KIND::kLIT_STRING:{
+                primary = new LiteralNode(new String(next->GetText()));
+                break;
+            }
+            case KIND::kTRUE:{
+                primary = new LiteralNode(Boolean::TRUE);
+                break;
+            }
+            case KIND::kFALSE:{
+                primary = new LiteralNode(Boolean::FALSE);
+                break;
+            }
+            case KIND::kNIL:{
+                primary = new LiteralNode(Object::NIL);
+                break;
+            }
+            default:{
+                std::cerr << "Unexpected " << next->GetText() << std::endl;
+                abort();
+            }
+        }
+
+        return primary;
+    }
+
+    static bool IsValidExprToken(Token* token){
+        TokenKind kind = token->GetKind();
+        return kind == KIND::kLIT_STRING ||
+               kind == KIND::kLIT_NUMBER ||
+               kind == KIND::kIDENTIFIER ||
+               kind == KIND::kAND ||
+               kind == KIND::kOR ||
+               kind == KIND::kFALSE ||
+               kind == KIND::kTRUE ||
+               kind == KIND::kNIL ||
+               kind == KIND::kNOT;
+    }
+
+    AstNode* Parser::ParseBinaryExpr(Scope* scope) {
+        AstNode* left = ParseUnaryExpr(scope);
+        Token* next = NextToken();
+        std::cout << "ParseBinaryExpr: " << next->GetText() << std::endl;
+        if(IsValidExprToken(next)){
+            while(IsValidExprToken(next)){
+                TokenKind op = next->GetKind();
+                AstNode* right = ParseBinaryExpr(scope);
+                left = new BinaryOpNode(op, left, right);
+                next = NextToken();
+            }
+        }
+        return left;
+    }
+
+    AstNode* Parser::ParseLocalDefinition(Scope* scope) {
+        Token* next;
+        if((next = NextToken())->GetKind() != KIND::kIDENTIFIER){
+            std::cerr << "Expected identifier, but got " << next->GetText() << std::endl;
+            abort();
+        }
+
+        std::string ident = next->GetText();
+
+        AstNode* init = nullptr;
+        LocalVariable* var = nullptr;
+
+        if((next = NextToken())->GetKind() == KIND::kEQUALS){
+            AstNode* expr = ParseBinaryExpr(scope);
+            var = new LocalVariable(ident, kUnknownTID);
+            init = new StoreLocalNode(var, expr);
+            if(expr->IsLiteralNode()){
+                var->SetConstantValue(expr->AsLiteralNode()->Literal());
+            }
+        } else{
+            PushBack(next);
+            var = new LocalVariable(ident, kUnknownTID);
+            AstNode* nullexpr = new LiteralNode(Object::NIL);
+            init = new StoreLocalNode(var, nullexpr);
+        }
+
+        scope->AddVariable(var);
+        return init;
     }
 }

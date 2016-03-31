@@ -37,7 +37,12 @@ namespace Luna{
     V(kLBRACKET, "[", "<left bracket>") \
     V(kRBRACKET, "]", "<right bracket>") \
     V(kLBRACE, "{", "<left brace>") \
-    V(kRBRACE, "}", "<right brace>")
+    V(kRBRACE, "}", "<right brace>") \
+    V(kCOMMA, ",", "<comma>") \
+    V(kADD, "+", "<add>") \
+    V(kSUB, "-", "<sub>") \
+    V(kMUL, "*", "<mul>") \
+    V(kDIV, "/", "<div>")
 
 #define TOKENS_LITERALS_LIST(V) \
     V(kLIT_STRING, "", "<literal string>") \
@@ -77,7 +82,7 @@ namespace Luna{
     class Parser{
     public:
         Parser(FILE* file);
-        Function* Parse(Scope* scope);
+        Function* Parse(Scope* scope = new Scope);
     private:
         Token* peek_;
         FILE* file_;
@@ -89,6 +94,11 @@ namespace Luna{
         Token* ParseNumber(char next);
         Token* NextToken();
         void PushBack(Token* token);
+
+        AstNode* ParseLocalDefinition(Scope* scope);
+        AstNode* ParseBinaryExpr(Scope* scope);
+        AstNode* ParseUnaryExpr(Scope* scope);
+        bool ResolveIdentifierInLocalScope(Scope* scope, std::string ident, AstNode** node);
 
         static std::map<std::string, TokenKind> keywords_;
         static inline bool IsKeyword(std::string str);

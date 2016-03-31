@@ -146,6 +146,16 @@ namespace Luna{
                 SetDisp32(disp);
             }
         }
+    private:
+        Address(Register base, int32_t disp, bool fixed){
+            SetModRM(2, base);
+            if((base & 7) == RSP){
+                SetSIB(TIMES_1, RSP, base);
+            }
+            SetDisp32(disp);
+        }
+
+        friend class Assembler;
     };
 
     class FieldAddress : public Address{
@@ -198,20 +208,47 @@ namespace Luna{
         void call(Label* label);
         void call(const ExternalLabel* label);
 
+        void movsd(XMMRegister dst, const Address& src);
+        void movsd(const Address& dst, XMMRegister src);
         void movq(Register dst, const Immediate& imm);
         void movq(Register dst, Register src);
         void movq(Register dst, const Address& src);
         void movq(const Address& dst, Register src);
         void movq(const Address& dst, const Immediate& imm);
+        void movaps(XMMRegister dst, XMMRegister src);
 
+        void addsd(XMMRegister dst, XMMRegister src);
         void addq(Register dst, Register src);
         void addq(Register dst, const Immediate& imm);
         void addq(Register dst, const Address& address);
         void addq(const Address& address, const Immediate& imm);
         void addq(const Address& address, Register src);
 
-        void push(Register src);
-        void pop(Register src);
+        void subq(Register dst, Register src);
+        void subq(Register dst, const Immediate& imm);
+        void subq(Register dst, const Address& addr);
+        void subq(const Address& addr, Register src);
+        void subq(const Address& addr, const Immediate& imm);
+
+        void pushq(const Immediate& imm);
+        void pushq(Register src);
+        void popq(Register src);
+
+        void andq(Register dst, Register src);
+        void andq(Register dst, const Immediate& imm);
+
+        void leaq(Register dst, const Address& src);
+
+        void LoadImmediate(Register reg, const Immediate& imm);
+        void MoveImmediate(const Address& dst, const Immediate& imm);
+        void LoadObject(Register dst, const Object& object);
+        void PushObject(const Object& object);
+
+        //TODO: Experimental?
+        // ================================
+        void EnterStackFrame(int size);
+        void LeaveStackFrame();
+        // =================================
 
         void ret();
 
@@ -224,6 +261,8 @@ namespace Luna{
             memcpy(ptr, reinterpret_cast<void*>(buffer_.contents_), buffer_.cursor_ - buffer_.contents_);
             return ptr;
         }
+
+        ObjectPot object_pot_;
     private:
         AssemblerBuffer buffer_;
 
@@ -249,11 +288,36 @@ namespace Luna{
             if(rex != REX_NONE) EmitUint8(REX_PREFIX | rex);
         }
 
+        inline void EmitREX_RB(XMMRegister reg, XMMRegister base, uint8_t rex = REX_NONE){
+            if(reg > 7) rex |= REX_R;
+            if(base > 7) rex |= REX_B;
+            if(rex != REX_NONE) EmitUint8(REX_PREFIX | rex);
+        }
+
+        inline void EmitREX_RB(XMMRegister reg, const Operand& oper, uint8_t rex = REX_NONE){
+            if(reg > 7) rex |= REX_R;
+            rex |= oper.rex();
+            if(rex != REX_NONE) EmitUint8(REX_PREFIX | rex);
+        }
+
+        inline void EmitREX_RB(Register reg, XMMRegister base, uint8_t rex = REX_NONE){
+            if(reg > 7) rex |= REX_R;
+            if(base > 7) rex |= REX_B;
+            if(rex != REX_NONE) EmitUint8(REX_PREFIX | rex);
+        }
+
+        inline void EmitXmmRegisterOperand(int rm, XMMRegister xmm){
+            Operand oper;
+            oper.SetModRM(3, static_cast<Register>(xmm));
+            EmitOperand(rm, oper);
+        }
+
         void EmitComplex(int rm, const Operand& oper, const Immediate& imm);
         void EmitOperand(int rm, const Operand& oper);
         void EmitImmediate(const Immediate& imm);
         void EmitLabel(Label* label, word instr_size);
         void EmitLabelLink(Label* label);
+        void LoadWordFromPool(Register dst, int32_t off);
     };
 }
 

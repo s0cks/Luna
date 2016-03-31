@@ -2,51 +2,69 @@
 #define LUNA_VM_H
 
 #include <map>
+#include <assert.h>
 #include "type.h"
+#include "scope.h"
 
 namespace Luna{
-    class Scope{
-    public:
-        Scope(Scope* parent = nullptr):
-                parent_(parent),
-                scope_(std::map<std::string, Object*>()){}
-
-        Object* Lookup(const std::string& value){
-            Scope* curr = this;
-            while(curr != nullptr){
-                if(curr->scope_.find(value) != curr->scope_.end()){
-                    return curr->scope_.find(value)->second;
-                }
-
-                curr = curr->parent_;
-            }
-
-            return nullptr;
-        }
-
-        void Define(const std::string& name, Object* value){
-            scope_[name] = value;
-        }
-    private:
-        Scope* parent_;
-        std::map<std::string, Object*> scope_;
-    };
+#define CHECK_TYPE(V) switch((V)->Type()){
+#define IS(V) case k##V##TID:
+#define DEFAULT default:
+#define END }
 
     namespace Internal{
-        static void CPrint(Object* obj){
-            switch(obj->Type()){
-                case kStringTID: std::cout << *reinterpret_cast<std::string*>(reinterpret_cast<word>(static_cast<String*>(obj)) + String::ValueOffset()) << std::endl; break;
-                case kNumberTID: std::cout << *reinterpret_cast<double*>(reinterpret_cast<word>(static_cast<Number*>(obj)) + Number::ValueOffset()) << std::endl; break;
-            }
+        static std::string CToString(Object* obj){
+            CHECK_TYPE(obj)
+                IS(String) return LUNA_STRING(obj);
+                IS(Number) {
+                    std::stringstream stream;
+                    stream << LUNA_NUMBER(obj);
+                    return stream.str();
+                }
+                IS(Boolean){
+                    std::stringstream stream;
+                    stream << LUNA_BOOLEAN(obj);
+                    return stream.str();
+                }
+                DEFAULT{
+                    std::stringstream stream;
+                    stream << "Object[" << obj->Type() << "]";
+                    return stream.str();
+                }
+            END
         }
 
-#define NATIVE_FUNCTION(NAME, F) \
-        scope->Define((NAME), Function::Native((NAME), (void*) F));
+        static std::string CType(Object* obj){
+            CHECK_TYPE(obj)
+                IS(String) return "string";
+                IS(Number) return "number";
+                IS(Table) return "table";
+                IS(Function) return "function";
+                IS(Boolean) return "boolean";
+                DEFAULT{
+                    return "[unknown]";
+                }
+            END
+        }
+
+        static void CPrint(Object* obj) {
+            CHECK_TYPE(obj)
+                IS(String) std::cout << LUNA_STRING(obj) << std::endl; break;
+                IS(Number) std::cout << LUNA_NUMBER(obj) << std::endl; break;
+                IS(Boolean) std::cout << LUNA_BOOLEAN(obj) << std::endl; break;
+                DEFAULT break;
+            END
+        }
 
         static void InitOnce(Scope* scope){
-            NATIVE_FUNCTION("print", &CPrint);
+
         }
     }
+
+#undef CHECK_TYPE
+#undef IS
+#undef DEFAULT
+#undef END
 }
 
 #endif

@@ -5,9 +5,10 @@
 #endif
 
 #include "intermediate_language.h"
-#include "type.h"
 
 #define __ compiler->
+#define UWORD(V) reinterpret_cast<uword>((V))
+#define IMM(V) Immediate(UWORD(V))
 
 namespace Luna{
     void ReturnInstr::EmitMachineCode(Assembler* compiler) {
@@ -24,21 +25,20 @@ namespace Luna{
 
     void PushArgumentInstr::EmitMachineCode(Assembler* compiler) {
         if(type_ == 0xB){
-            __ push(register_);
+            __ pushq(register_);
         } else{
-            if(value_->RequiresFpu()){
-                __ movq(static_cast<Register>(XMM0), Immediate(reinterpret_cast<word>(value_)));
-                __ push(static_cast<Register>(XMM0));
-            } else{
-                __ movq(TMP, Immediate(reinterpret_cast<word>(value_)));
-                __ push(TMP);
-            }
+            __ movq(TMP, IMM(value_));
+            __ pushq(TMP);
         }
     }
 
     void NativeCallInstr::EmitMachineCode(Assembler* compiler) {
-        __ pop(RDI);
-        ExternalLabel label(reinterpret_cast<uword>(function_->GetNativeFunction()));
+        ExternalLabel label(UWORD(function_->GetNativeFunction()));
+        __ call(&label);
+    }
+
+    void CompoundCallInstr::EmitMachineCode(Assembler* compiler) {
+        ExternalLabel label(UWORD(function_->GetCompoundFunction()));
         __ call(&label);
     }
 
@@ -48,6 +48,14 @@ namespace Luna{
     }
 
     void LoadObjectInstr::EmitMachineCode(Assembler* compiler) {
-        __ movq(register_, Immediate(reinterpret_cast<uword>(object_)));
+        __ movq(register_, IMM(object_));
+    }
+
+    void StoreLocalInstr::EmitMachineCode(Assembler* compiler) {
+        __ movq(Address(RBP, local_->GetIndex() * kWordSize), IMM(local_->GetConstantValue()));
+    }
+
+    void LoadLocalInstr::EmitMachineCode(Assembler* compiler) {
+        __ movq(register_, Address(RBP, local_->GetIndex() * kWordSize));
     }
 }
